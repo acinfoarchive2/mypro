@@ -1,102 +1,85 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <title>Debate Argumentativo Libre</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="UTF-8" />
+  <title>Diálogo entre IA</title>
   <style>
-    body { font-family: sans-serif; background: #f4f7fa; margin: 0; padding: 2rem; display: flex; justify-content: center; }
-    .container { max-width: 800px; background: white; border-radius: 12px; box-shadow: 0 0 12px rgba(0,0,0,0.1); padding: 20px; width: 100%; }
-    h1 { text-align: center; color: #2a4d7a; margin-bottom: 1rem; }
-    .controls { display: flex; gap: 10px; margin-bottom: 1rem; }
-    input, select { flex: 1; padding: 10px; font-size: 1rem; border-radius: 8px; border: 1px solid #ccc; }
-    button { padding: 10px 16px; font-size: 1rem; border: none; border-radius: 8px; background: #2a4d7a; color: white; cursor: pointer; }
-    button:hover { background: #1e3657; }
-    .chat { border: 1px solid #ddd; border-radius: 8px; padding: 10px; height: 400px; overflow-y: auto; background: #fafafa; white-space: pre-wrap; }
-    .row { margin-bottom: 1rem; }
-    .alpha { color: #2a4d7a; font-weight: bold; }
-    .beta { color: #22863a; font-weight: bold; }
-    .typing { font-style: italic; color: #999; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background-color: #f7f9fc;
+      color: #333;
+      padding: 2rem;
+      text-align: center;
+    }
+
+    h1 {
+      color: #2c3e50;
+    }
+
+    button {
+      background-color: #4A90E2;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 5px;
+      font-size: 16px;
+      cursor: pointer;
+      margin: 10px;
+    }
+
+    button:hover {
+      background-color: #357ABD;
+    }
+
+    #output {
+      text-align: left;
+      margin: 2rem auto;
+      max-width: 600px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      padding: 1.5rem;
+      white-space: pre-line;
+    }
+
+    .loading {
+      color: #999;
+      font-style: italic;
+    }
   </style>
 </head>
 <body>
-<div class="container">
-  <h1>Debate Argumentativo Libre</h1>
-  <div class="controls">
-    <input id="topic" placeholder="Tópico del debate" value="Mercados como unidad de análisis en el contexto histórico de Adam Smith y mercados actuales" />
-    <select id="alphaStance">
-      <option value="pro">Alpha a favor</option>
-      <option value="contra">Alpha en contra</option>
-    </select>
-    <select id="betaStance">
-      <option value="contra">Beta en contra</option>
-      <option value="pro">Beta a favor</option>
-    </select>
-  </div>
-  <div class="controls">
-    <input id="turns" type="number" value="5" min="1" max="10" />
-    <input id="delay" type="number" value="2500" min="100" step="100" />
-    <button id="start">Iniciar</button>
-    <button id="clear">Limpiar</button>
-  </div>
-  <div id="chat" class="chat"></div>
-</div>
+  <h1>Diálogo entre dos IA</h1>
+  <button id="start">Iniciar conversación</button>
+  <button id="clear">Limpiar</button>
+  <div id="output"></div>
 
-<script>
-const chat = document.getElementById('chat');
-const startBtn = document.getElementById('start');
-const clearBtn = document.getElementById('clear');
-let stop = false;
+  <script>
+    const startButton = document.getElementById("start");
+    const clearButton = document.getElementById("clear");
+    const outputDiv = document.getElementById("output");
 
-function appendMessage(speaker, message) {
-  const div = document.createElement('div');
-  div.className = 'row';
-  div.innerHTML = `<span class="${speaker.toLowerCase()}">${speaker}:</span> ${message}`;
-  chat.appendChild(div);
-  chat.scrollTop = chat.scrollHeight;
-}
+    startButton.onclick = async () => {
+      outputDiv.innerHTML = '<p class="loading">Cargando conversación...</p>';
 
-function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+      const res = await fetch('/.netlify/functions/dialog-libre-memoria?interactions=6&topic=mercados&temperature=1&frequency_penalty=0.3');
+      const data = await res.json();
+      const convo = data.conversation;
 
-clearBtn.onclick = () => {
-  chat.innerHTML = '';
-  stop = true;
-};
+      outputDiv.innerHTML = ''; // Limpiar antes de mostrar
 
-startBtn.onclick = async () => {
-  chat.innerHTML = '';
-  stop = false;
-  const topic = document.getElementById('topic').value;
-  const alphaStance = document.getElementById('alphaStance').value;
-  const betaStance = document.getElementById('betaStance').value;
-  const turns = parseInt(document.getElementById('turns').value, 10);
-  const delayMs = parseInt(document.getElementById('delay').value, 10);
+      for (let i = 0; i < convo.length; i++) {
+        const turno = convo[i];
+        const p = document.createElement("p");
+        p.textContent = `${turno.speaker}: ${turno.message}`;
+        outputDiv.appendChild(p);
+        await new Promise(resolve => setTimeout(resolve, 1200)); // demora de 1.2s
+      }
+    };
 
-  let lastBeta = '';
-  let alphaPrompt = `Sos AI Alpha. Defendé la postura ${alphaStance.toUpperCase()} sobre: ${topic}. Debatí con respeto y firmeza. Respondé con 1-2 oraciones. Terminá con una pregunta.`;
-  let betaPrompt  = `Sos AI Beta. Defendé la postura ${betaStance.toUpperCase()} sobre: ${topic}. No repitas lo de Alpha. Contraargumentá con datos o ejemplos. Respondé con 1-2 oraciones y terminá con punto.`;
-
-  let alphaMsg = "Comencemos el debate. ¿Por qué tu postura es la más convincente?";
-
-  for (let i = 0; i < turns && !stop; i++) {
-    appendMessage('Alpha', '...');
-    const resAlpha = await fetch('/.netlify/functions/dialog-libre?' + new URLSearchParams({ role: 'Alpha', prompt: alphaMsg, topic, stance: alphaStance }));
-    const dataAlpha = await resAlpha.json();
-    chat.lastChild.remove();
-    appendMessage('Alpha', dataAlpha.message);
-    await delay(delayMs);
-
-    if (stop) break;
-
-    appendMessage('Beta', '...');
-    const resBeta = await fetch('/.netlify/functions/dialog-libre?' + new URLSearchParams({ role: 'Beta', prompt: dataAlpha.message, topic, stance: betaStance }));
-    const dataBeta = await resBeta.json();
-    chat.lastChild.remove();
-    appendMessage('Beta', dataBeta.message);
-    alphaMsg = dataBeta.message;
-    await delay(delayMs);
-  }
-};
-</script>
+    clearButton.onclick = () => {
+      outputDiv.innerHTML = '';
+    };
+  </script>
 </body>
 </html>

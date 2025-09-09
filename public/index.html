@@ -3,17 +3,112 @@
 <head>
   <meta charset="UTF-8" />
   <title>Diálogo entre IA</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      background: #f4f7fa;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+    }
+
+    .container {
+      background: #fff;
+      margin-top: 40px;
+      padding: 20px;
+      border-radius: 16px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+      width: 100%;
+      max-width: 600px;
+    }
+
+    h1 {
+      font-size: 1.4rem;
+      margin-bottom: 1rem;
+      text-align: center;
+      color: #2a4d7a;
+    }
+
+    .input-group {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 1rem;
+    }
+
+    input {
+      flex: 1;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      font-size: 1rem;
+    }
+
+    button {
+      background: #2a4d7a;
+      color: #fff;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: background 0.2s ease;
+    }
+    button:hover {
+      background: #1e3657;
+    }
+
+    .chat {
+      background: #f9fbfd;
+      border: 1px solid #e0e6ed;
+      border-radius: 12px;
+      padding: 12px;
+      height: 300px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      line-height: 1.5;
+    }
+
+    .msg-alpha {
+      color: #2a4d7a;
+      font-weight: bold;
+    }
+
+    .msg-beta {
+      color: #22863a;
+      font-weight: bold;
+    }
+  </style>
 </head>
 <body>
-  <h1>Diálogo entre dos IA</h1>
-  <button id="run">Iniciar conversación</button>
-  <pre id="log"></pre>
+  <div class="container">
+    <h1>Diálogo entre dos IA</h1>
+    <div class="input-group">
+      <input id="topic" placeholder="Escribí un tema (ej: oferta y demanda)" />
+      <button id="run">Iniciar</button>
+    </div>
+    <div id="log" class="chat"></div>
+  </div>
+
   <script>
     document.getElementById('run').onclick = async () => {
-      const res = await fetch('/.netlify/functions/dialog?interactions=3&max_tokens=60');
+      const topic = document.getElementById('topic').value.trim();
+      const query = new URLSearchParams({
+        interactions: 3,
+        max_tokens: 60,
+        ...(topic && { topic })
+      });
+
+      const res = await fetch('/.netlify/functions/dialog?' + query.toString());
       const data = await res.json();
-      const output = data.conversation.map(c => `${c.speaker}: ${c.message}`).join('\n');
-      document.getElementById('log').textContent = output;
+
+      const log = document.getElementById('log');
+      log.innerHTML = data.conversation.map(c =>
+        `<div><span class="msg-${c.speaker.toLowerCase()}">${c.speaker}:</span> ${c.message}</div>`
+      ).join('');
+      log.scrollTop = log.scrollHeight;
     };
   </script>
 </body>

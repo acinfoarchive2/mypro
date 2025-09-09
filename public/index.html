@@ -1,112 +1,41 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <title>Debate Argumentativo</title>
-  <style>
-    body { font-family: sans-serif; margin: 2rem; background: #f7f7f7; }
-    .controls { margin-bottom: 1rem; }
-    #chat { white-space: pre-line; background: #fff; padding: 1rem; border-radius: 10px; box-shadow: 0 0 10px #ccc; }
-    .alpha { color: #0074D9; font-weight: bold; }
-    .beta { color: #FF4136; font-weight: bold; }
-  </style>
+  <meta charset="UTF-8" />
+  <title>Diálogo entre IA</title>
 </head>
 <body>
-
-  <div class="controls">
-    <label>Tema: <input type="text" id="topic" value="La noción de mercado en Adam Smith y su vigencia en la economía digital" size="80"></label><br><br>
-    <label>Modo:
-      <select id="mode">
-        <option value="debate">Debate</option>
-      </select>
-    </label>
-    ·
-    <label>Alpha =
-      <select id="alpha-stance">
-        <option value="pro">pro</option>
-        <option value="contra">contra</option>
-      </select>
-    </label>
-    ·
-    <label>Beta =
-      <select id="beta-stance">
-        <option value="contra">contra</option>
-        <option value="pro">pro</option>
-      </select>
-    </label>
-    <br><br>
-    <button id="start">Iniciar</button>
-    <button id="clear">Limpiar</button>
-  </div>
-
-  <div id="chat"></div>
-
+  <h1>Diálogo entre dos IA</h1>
+  <button id="run">Iniciar conversación</button>
+  <pre id="log"></pre>
   <script>
-    const startBtn = document.getElementById('start');
-    const clearBtn = document.getElementById('clear');
-    const chat = document.getElementById('chat');
-
-    function appendMessage(speaker, text) {
-      const div = document.createElement('div');
-      div.innerHTML = `<span class="${speaker.toLowerCase()}">${speaker}</span>: ${text}`;
-      chat.appendChild(div);
-    }
-
-    function delay(ms) {
-      return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
-    clearBtn.onclick = () => {
-      chat.innerHTML = '';
-    };
-
-    startBtn.onclick = async () => {
-      chat.innerHTML = '';
-      const topic = document.getElementById('topic').value;
-      const alphaStance = document.getElementById('alpha-stance').value;
-      const betaStance = document.getElementById('beta-stance').value;
-
-      appendMessage("Modo", "Debate · Alpha=" + alphaStance + " · Beta=" + betaStance);
-
-      let alphaMsg = `¿Cómo influye la noción de mercado en Adam Smith en el análisis de plataformas actuales?`;
-      let memory = [];
-
-      const turns = 6;
-      const delayMs = 2000;
-
-      for (let i = 0; i < turns; i++) {
-        // Alpha
-        appendMessage('Alpha', '...');
-        const resAlpha = await fetch('/.netlify/functions/dialog-libre?' + new URLSearchParams({
-          role: 'Alpha',
-          prompt: alphaMsg,
-          topic,
-          stance: alphaStance,
-          memory: JSON.stringify(memory.slice(-2))
-        }));
-        const dataAlpha = await resAlpha.json();
-        chat.lastChild.remove();
-        appendMessage('Alpha', dataAlpha.message);
-        memory.push({ speaker: 'Alpha', message: dataAlpha.message });
-        await delay(delayMs);
-
-        // Beta
-        appendMessage('Beta', '...');
-        const resBeta = await fetch('/.netlify/functions/dialog-libre?' + new URLSearchParams({
-          role: 'Beta',
-          prompt: dataAlpha.message,
-          topic,
-          stance: betaStance,
-          memory: JSON.stringify(memory.slice(-2))
-        }));
-        const dataBeta = await resBeta.json();
-        chat.lastChild.remove();
-        appendMessage('Beta', dataBeta.message);
-        memory.push({ speaker: 'Beta', message: dataBeta.message });
-        alphaMsg = dataBeta.message;
-        await delay(delayMs);
-      }
+    document.getElementById('run').onclick = async () => {
+      const res = await fetch('/.netlify/functions/dialog?interactions=3&max_tokens=60');
+      const data = await res.json();
+      const output = data.conversation.map(c => `${c.speaker}: ${c.message}`).join('\n');
+      document.getElementById('log').textContent = output;
     };
   </script>
 </body>
 </html>
+tests/limits.test.js
+Nuevo
++16
+-0
+
+const { parseLimits } = require('../utils/limits');
+
+const cases = [
+  [{ interactions: '5', max_tokens: '100' }, { interactions: 5, max_tokens: 100 }],
+  [{ interactions: '50', max_tokens: '500' }, { interactions: 20, max_tokens: 200 }]
+];
+
+for (const [input, expected] of cases) {
+  const out = parseLimits(input);
+  if (out.interactions !== expected.interactions || out.max_tokens !== expected.max_tokens) {
+    console.error('Test failed', { input, out, expected });
+    process.exit(1);
+  }
+}
+
+console.log('All tests passed.');

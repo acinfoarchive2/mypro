@@ -1,42 +1,12 @@
 const { parseLimits } = require('../../utils/limits');
 
-// Seguridad para texto
 function sanitize(text) {
   let out = (text || '').trim();
   out = out.replace(/\s{2,}/g, ' ').replace(/\.{3,}/g, '…');
   return out;
 }
 
-// Último mensaje por hablante
-function getLastMessage(conversation, speaker) {
-  return [...conversation].reverse().find(msg => msg.speaker === speaker)?.message || '';
-}
-
-// Prompts
-function rolePromptDebate(role, topic, stance, opponentStance) {
-  const scope = `Tema obligatorio: ${topic}. Centrate en Adam Smith (s. XVIII), su concepto de mercado, y el contraste con mercados actuales (plataformas, información, competencia, regulación, efectos de red).`;
-  const rules = [
-    stance === 'pro'
-      ? role === 'Alpha'
-        ? "Defendé la postura PRO: la noción de mercado en Smith sigue siendo fértil para analizar mercados actuales."
-        : "Defendé la postura PRO: la noción de mercado en Smith conserva vigencia, con matices contemporáneos."
-      : role === 'Alpha'
-      ? "Defendé la postura CONTRA: la noción de mercado en Smith resulta insuficiente para mercados digitales actuales."
-      : "Defendé la postura CONTRA: la noción de mercado en Smith es limitada ante plataformas y efectos de red.",
-    `Tu oponente defiende la postura ${opponentStance.toUpperCase()}. No coincidas salvo concesión mínima explícita y justificada.`,
-    "Evitá muletillas de asistencia. Prohibido: 'puedo ayudarte', 'no tengo preferencias', desvíos a gestión/OKR/KPI."
-  ];
-
-  if (role === 'Alpha') {
-    rules.push("Producí 1–2 oraciones (MÁX. 40 palabras). Terminá SIEMPRE con una pregunta directa.");
-  } else {
-    rules.push("Producí 1–2 oraciones (MÁX. 40 palabras). Respondé y contra-argumentá. No hagas preguntas. Cerrá con punto.");
-  }
-
-  return ["Sos un debatiente disciplinado.", scope, ...rules].join(' ');
-}
-
-// Llamada al modelo
+// Core call to OpenAI
 async function fetchCompletion({ apiKey, role, prompt, maxTokens, systemPrompt, temperature, frequency_penalty }) {
   const body = {
     model: 'gpt-4o-mini',
@@ -51,133 +21,107 @@ async function fetchCompletion({ apiKey, role, prompt, maxTokens, systemPrompt, 
 
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`
-    },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
     body: JSON.stringify(body)
   });
 
   if (!res.ok) {
     const err = await res.text();
+    console.error(`OpenAI error: ${err}`);
     throw new Error(`OpenAI error: ${err}`);
   }
 
   const data = await res.json();
-  return sanitize(data.choices?.[0]?.message?.content || '');
+  const content = data.choices?.[0]?.message?.content;
+  return sanitize(typeof content === 'string' ? content : '[sin respuesta]');
 }
 
-// Turno robusto
-async function safeTurn({
-  apiKey, role, prompt, maxTokens, systemPrompt,
-  temperature, frequency_penalty, forcePeriod = false, forceQuestion = false
-}) {
-  let out = await fetchCompletion({ apiKey, role, prompt, maxTokens, systemPrompt, temperature, frequency_penalty });
+// Memoria parcial: últimos dos turnos
+function buildPromptFromMemory(convo) {
+  const lastTwo = convo.slice(-2).map(c => `${c.speaker}: ${c.message}`).join('\n');
+  return `Continuá el diálogo respetando el tono y el contenido. Respondé como ${convo[convo.length - 1].speaker === 'Alpha' ? 'Beta' : 'Alpha'}:\n${lastTwo}`;
+}
 
-  // corregimos cierre
-  if (forcePeriod && !/[.!?…]$/.test(out)) out += '.';
-  if (forceQuestion && !/\?$/.test(out)) {
-    out = out.replace(/[.!…]\s*$/, '?');
-    if (!/\?$/.test(out)) out += '?';
-  }
+function rolePrompt(role) {
+  return [
+    `Sos ${role}, una inteligencia artificial que participa en un diálogo argumentativo sobre economía.`,
+    "Respondé con claridad, concisión (1–2 oraciones, máx. 45 palabras).",
+    "Prohibido saludar, desviar el tema o usar muletillas como 'puedo ayudarte'.",
+    role === 'Alpha'
+      ? "Siempre terminá con una pregunta directa para sostener el intercambio."
+      : "Respondé, contraargumentá y cerrá con punto. No hagas preguntas."
+  ].join(' ');
+}
 
+async function safeTurnWithMemory({ apiKey, role, conversation, maxTokens, temperature, frequency_penalty }) {
+  const systemPrompt = rolePrompt(role);
+  const prompt = buildPromptFromMemory(conversation);
+
+  const out = await fetchCompletion({
+    apiKey,
+    role,
+    prompt,
+    maxTokens,
+    systemPrompt,
+    temperature,
+    frequency_penalty
+  });
+
+  console.log(`🎤 ${role}:`, out);
   return out;
 }
 
-// Handler principal
-exports.handler = async function(event) {
+exports.handler = async function (event) {
   try {
     const {
       interactions,
       max_tokens,
       topic,
-      mode,
-      alpha_stance,
-      beta_stance,
       temperature = 1,
-      frequency_penalty = 0.3,
-      conversation: conversationRaw
+      frequency_penalty = 0.3
     } = parseLimits(event.queryStringParameters || {});
-
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      return {
-        statusCode: 500,
-        body: JSON.stringify({ error: 'Missing OPENAI_API_KEY' })
-      };
+      return { statusCode: 500, body: JSON.stringify({ error: 'Missing OPENAI_API_KEY' }) };
     }
 
-    // Recuperar conversación previa
-    let conversation = [];
-    if (conversationRaw) {
-      try {
-        conversation = JSON.parse(conversationRaw);
-      } catch (err) {
-        console.warn("No se pudo parsear 'conversation'", err);
-      }
-    }
+    const conversation = [];
 
-    const alphaPrompt = rolePromptDebate('Alpha', topic, alpha_stance, beta_stance);
-    const betaPrompt = rolePromptDebate('Beta', topic, beta_stance, alpha_stance);
-
-    // Si no hay turnos previos, generamos semilla inicial
-    if (conversation.length === 0) {
-      const alphaSeed = await safeTurn({
-        apiKey,
-        role: 'Alpha',
-        prompt: "Iniciá la tesis PRO o CONTRA según postura, y cerrá con pregunta al oponente.",
-        maxTokens: max_tokens,
-        systemPrompt: alphaPrompt,
-        temperature,
-        frequency_penalty,
-        forceQuestion: true
-      });
-
-      conversation.push({ speaker: 'Alpha', message: alphaSeed });
-    }
-
-    let lastSpeaker = conversation.at(-1).speaker;
-    let nextSpeaker = lastSpeaker === 'Alpha' ? 'Beta' : 'Alpha';
+    // Semilla inicial
+    const alphaSeed = `Alpha: ¿Cómo influye la noción de mercado en Adam Smith en el análisis de plataformas actuales?`;
+    conversation.push({ speaker: 'Alpha', message: alphaSeed });
 
     for (let i = 0; i < interactions; i++) {
-      const lastMsg = conversation.at(-1).message;
-
-      const systemPrompt = nextSpeaker === 'Alpha' ? alphaPrompt : betaPrompt;
-      const forceQuestion = nextSpeaker === 'Alpha';
-      const forcePeriod = nextSpeaker === 'Beta';
-
-      const response = await safeTurn({
+      const betaMsg = await safeTurnWithMemory({
         apiKey,
-        role: nextSpeaker,
-        prompt: lastMsg,
+        role: 'Beta',
+        conversation,
         maxTokens: max_tokens,
-        systemPrompt,
         temperature,
-        frequency_penalty,
-        forceQuestion,
-        forcePeriod
+        frequency_penalty
       });
+      conversation.push({ speaker: 'Beta', message: betaMsg });
 
-      conversation.push({ speaker: nextSpeaker, message: response });
-
-      // Alternar turno
-      nextSpeaker = nextSpeaker === 'Alpha' ? 'Beta' : 'Alpha';
+      const alphaMsg = await safeTurnWithMemory({
+        apiKey,
+        role: 'Alpha',
+        conversation,
+        maxTokens: max_tokens,
+        temperature,
+        frequency_penalty
+      });
+      conversation.push({ speaker: 'Alpha', message: alphaMsg });
     }
+
+    console.log('📋 CONVERSACIÓN FINAL:', conversation);
 
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        mode: 'debate-memoria',
-        topic,
-        alpha_stance,
-        beta_stance,
-        temperature,
-        frequency_penalty,
-        conversation
-      })
+      body: JSON.stringify({ mode: 'debate-libre-memoria', topic, conversation })
     };
   } catch (e) {
+    console.error('🔥 ERROR:', e.message);
     return {
       statusCode: 500,
       body: JSON.stringify({ error: e.message })

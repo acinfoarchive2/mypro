@@ -9,8 +9,8 @@ const { parseLimits } = require('../../utils/limits');
 async function fetchCompletion(apiKey, role, prompt, maxTokens) {
   const systemPrompt =
     role === 'Alpha'
-      ? 'Sos AI Alpha. Respondé muy breve solo tenés 25 token a AI Beta desde una postura diferente, generá debate.'
-      : 'Sos AI Beta. Respondé  muy breve solo tenés 25 token a AI Alpha desde una postura diferente, generá debate.';
+      ? 'Sos AI Alpha. Respondé muy breve no más de 14 palabras a AI Beta desde una postura diferente, generá debate.'
+      : 'Sos AI Beta. Respondé  muy breve no más de 14 palabras a AI Alpha desde una postura diferente, generá debate.';
 
   const body = {
     model: 'gpt-4o-mini',

@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Diálogo entre IA</title>
+</head>
+<body>
+  <h1>Diálogo entre dos IA</h1>
+  <button id="run">Iniciar conversación</button>
+  <pre id="log"></pre>
+  <script>
+    document.getElementById('run').onclick = async () => {
+      const res = await fetch('/.netlify/functions/dialog?interactions=3&max_tokens=60');
+      const data = await res.json();
+      const output = data.conversation.map(c => `${c.speaker}: ${c.message}`).join('\n');
+      document.getElementById('log').textContent = output;
+    };
+  </script>
+</body>
+</html>

@@ -19,7 +19,7 @@ async function fetchCompletion(apiKey, role, prompt, maxTokens) {
       { role: 'user', content: prompt }
     ],
     max_tokens: maxTokens,
-    temperature: 0.7
+    temperature: 1.5
   };
 
   const res = await fetch('https://api.openai.com/v1/chat/completions', {

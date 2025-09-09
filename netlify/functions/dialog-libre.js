@@ -23,8 +23,8 @@ exports.handler = async function(event) {
       { role: 'user', content: prompt }
     ],
     max_tokens: 100,
-    temperature: 0.3,
-    frequency_penalty: 0.3
+    temperature: 1.0,
+    frequency_penalty: 1.0
   };
 
   try {

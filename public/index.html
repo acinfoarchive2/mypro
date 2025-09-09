@@ -1,172 +1,59 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <title>Diálogo / Debate entre IA</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="UTF-8">
+  <title>Debate Argumentativo</title>
   <style>
-    :root {
-      --bg: #f4f7fa;
-      --card: #fff;
-      --primary: #2a4d7a;
-      --primary-600: #1e3657;
-      --border: #e0e6ed;
-      --alpha: #2a4d7a;
-      --beta: #22863a;
-    }
-    * { box-sizing: border-box; }
-    body {
-      font-family: system-ui, sans-serif;
-      background: var(--bg);
-      margin: 0;
-      min-height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: flex-start;
-    }
-    .container {
-      background: var(--card);
-      margin: 32px 16px;
-      padding: 20px;
-      border-radius: 16px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.08);
-      width: 100%;
-      max-width: 820px;
-    }
-    h1 {
-      font-size: 1.5rem;
-      margin: 0 0 12px;
-      text-align: center;
-      color: var(--primary);
-    }
-    p.sub {
-      text-align: center;
-      color: #5b6b7e;
-      margin: 0 0 16px;
-      font-size: 0.95rem;
-    }
-    .grid { display: grid; gap: 8px; margin-bottom: 12px; }
-    .g2 { grid-template-columns: 1fr auto; }
-    .g3 { grid-template-columns: repeat(3, 1fr); }
-    .g4 { grid-template-columns: repeat(4, 1fr); }
-    input, select {
-      width: 100%;
-      padding: 10px 12px;
-      border: 1px solid #cfd7df;
-      border-radius: 10px;
-      font-size: 0.95rem;
-      outline: none;
-    }
-    button {
-      background: var(--primary);
-      color: #fff;
-      border: none;
-      padding: 10px 16px;
-      border-radius: 10px;
-      cursor: pointer;
-      font-size: 0.95rem;
-      transition: background 0.15s ease;
-      min-width: 120px;
-    }
-    button:hover { background: var(--primary-600); }
-    .chat {
-      background: #f9fbfd;
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 12px;
-      height: 420px;
-      overflow-y: auto;
-      line-height: 1.5;
-    }
-    .row {
-      display: flex;
-      gap: 10px;
-      align-items: center;
-      margin-bottom: 10px;
-    }
-    .badge {
-      padding: 4px 8px;
-      border-radius: 999px;
-      font-size: 0.8rem;
-      font-weight: 700;
-      white-space: nowrap;
-    }
-    .alpha {
-      color: var(--alpha);
-      border: 1px solid var(--alpha);
-    }
-    .beta {
-      color: var(--beta);
-      border: 1px solid var(--beta);
-    }
-    .msg {
-      background: #fff;
-      border: 1px solid var(--border);
-      padding: 10px 12px;
-      border-radius: 10px;
-      flex: 1;
-    }
-    .footer-note {
-      color: #7a8aa0;
-      font-size: 0.85rem;
-      margin-top: 10px;
-      text-align: center;
-    }
+    body { font-family: sans-serif; margin: 2rem; background: #f7f7f7; }
+    .controls { margin-bottom: 1rem; }
+    #chat { white-space: pre-line; background: #fff; padding: 1rem; border-radius: 10px; box-shadow: 0 0 10px #ccc; }
+    .alpha { color: #0074D9; font-weight: bold; }
+    .beta { color: #FF4136; font-weight: bold; }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>Diálogo / Debate entre dos IA</h1>
-    <p class="sub">Elegí el modo. En debate, Alpha pregunta y defiende su postura; Beta responde y contra-argumenta.</p>
-    <div class="grid g2">
-      <input id="topic" placeholder="Tópico" value="Mercados como unidad de análisis en el contexto histórico de Adam Smith y mercados actuales" />
-      <button id="start">Iniciar</button>
-    </div>
-    <div class="grid g4">
+
+  <div class="controls">
+    <label>Tema: <input type="text" id="topic" value="La noción de mercado en Adam Smith y su vigencia en la economía digital" size="80"></label><br><br>
+    <label>Modo:
       <select id="mode">
         <option value="debate">Debate</option>
-        <option value="dialog">Diálogo</option>
       </select>
-      <select id="alphaStance">
-        <option value="pro">Alpha a favor</option>
-        <option value="contra">Alpha en contra</option>
+    </label>
+    ·
+    <label>Alpha =
+      <select id="alpha-stance">
+        <option value="pro">pro</option>
+        <option value="contra">contra</option>
       </select>
-      <select id="betaStance">
-        <option value="contra">Beta en contra</option>
-        <option value="pro">Beta a favor</option>
+    </label>
+    ·
+    <label>Beta =
+      <select id="beta-stance">
+        <option value="contra">contra</option>
+        <option value="pro">pro</option>
       </select>
-      <input id="turns" type="number" min="1" max="10" value="3" title="Interacciones" />
-    </div>
-    <div class="grid g3">
-      <input id="delay" type="number" value="2500" min="100" step="100" title="Demora (ms)" />
-      <button id="clear">Limpiar</button>
-      <span class="pill" id="badge"></span>
-    </div>
-    <div id="chat" class="chat" aria-live="polite"></div>
-    <div class="footer-note">
-      Requiere <code>OPENAI_API_KEY</code> en Variables de entorno (Netlify → Site settings → Environment).
-    </div>
+    </label>
+    <br><br>
+    <button id="start">Iniciar</button>
+    <button id="clear">Limpiar</button>
   </div>
+
+  <div id="chat"></div>
+
   <script>
-    const chat = document.getElementById('chat');
     const startBtn = document.getElementById('start');
     const clearBtn = document.getElementById('clear');
-    const badge = document.getElementById('badge');
-    function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+    const chat = document.getElementById('chat');
 
-    function appendLine(speaker, message) {
-      const row = document.createElement('div');
-      row.className = 'row';
-      const badgeEl = document.createElement('span');
-      badgeEl.className = 'badge ' + (speaker === 'Alpha' ? 'alpha' : 'beta');
-      badgeEl.textContent = speaker;
-      const msg = document.createElement('div');
-      msg.className = 'msg';
-      msg.textContent = message;
-      row.appendChild(badgeEl);
-      row.appendChild(msg);
-      chat.appendChild(row);
-      chat.scrollTop = chat.scrollHeight;
+    function appendMessage(speaker, text) {
+      const div = document.createElement('div');
+      div.innerHTML = `<span class="${speaker.toLowerCase()}">${speaker}</span>: ${text}`;
+      chat.appendChild(div);
+    }
+
+    function delay(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
     }
 
     clearBtn.onclick = () => {
@@ -175,38 +62,49 @@
 
     startBtn.onclick = async () => {
       chat.innerHTML = '';
-      const topic = document.getElementById('topic').value.trim();
-      const alphaStance = document.getElementById('alphaStance').value;
-      const betaStance = document.getElementById('betaStance').value;
-      const turns = parseInt(document.getElementById('turns').value, 10);
-      const delayMs = parseInt(document.getElementById('delay').value, 10);
-      const mode = document.getElementById('mode').value;
+      const topic = document.getElementById('topic').value;
+      const alphaStance = document.getElementById('alpha-stance').value;
+      const betaStance = document.getElementById('beta-stance').value;
 
-      badge.textContent = mode === 'debate'
-        ? `Modo: Debate · Alpha=${alphaStance} · Beta=${betaStance}`
-        : `Modo: Diálogo`;
+      appendMessage("Modo", "Debate · Alpha=" + alphaStance + " · Beta=" + betaStance);
 
-      try {
-        const params = new URLSearchParams({
+      let alphaMsg = `¿Cómo influye la noción de mercado en Adam Smith en el análisis de plataformas actuales?`;
+      let memory = [];
+
+      const turns = 6;
+      const delayMs = 2000;
+
+      for (let i = 0; i < turns; i++) {
+        // Alpha
+        appendMessage('Alpha', '...');
+        const resAlpha = await fetch('/.netlify/functions/dialog-libre?' + new URLSearchParams({
+          role: 'Alpha',
+          prompt: alphaMsg,
           topic,
-          alpha_stance: alphaStance,
-          beta_stance: betaStance,
-          interactions: turns,
-          max_tokens: 140,
-          mode
-        });
-        const res = await fetch('/.netlify/functions/dialog?' + params.toString());
-        const data = await res.json();
-        if (data.conversation) {
-          for (const turn of data.conversation) {
-            appendLine(turn.speaker, turn.message);
-            await delay(delayMs);
-          }
-        } else if (data.error) {
-          appendLine('Error', data.error);
-        }
-      } catch (e) {
-        appendLine('Error', e.message || 'Fallo desconocido');
+          stance: alphaStance,
+          memory: JSON.stringify(memory.slice(-2))
+        }));
+        const dataAlpha = await resAlpha.json();
+        chat.lastChild.remove();
+        appendMessage('Alpha', dataAlpha.message);
+        memory.push({ speaker: 'Alpha', message: dataAlpha.message });
+        await delay(delayMs);
+
+        // Beta
+        appendMessage('Beta', '...');
+        const resBeta = await fetch('/.netlify/functions/dialog-libre?' + new URLSearchParams({
+          role: 'Beta',
+          prompt: dataAlpha.message,
+          topic,
+          stance: betaStance,
+          memory: JSON.stringify(memory.slice(-2))
+        }));
+        const dataBeta = await resBeta.json();
+        chat.lastChild.remove();
+        appendMessage('Beta', dataBeta.message);
+        memory.push({ speaker: 'Beta', message: dataBeta.message });
+        alphaMsg = dataBeta.message;
+        await delay(delayMs);
       }
     };
   </script>

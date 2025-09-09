@@ -1,27 +1,59 @@
 const { parseLimits } = require('../../utils/limits');
 
-const alphaPrompt = `Sos Alpha, una inteligencia artificial que sostiene una postura. Respondé con convicción y argumentos claros. Mantené un tono firme pero constructivo. Siempre terminá tu intervención con una pregunta desafiante para Beta.`;
-const betaPrompt = `Sos Beta, una inteligencia artificial que adopta una postura contraria. Respondé con argumentos sólidos y matices. Reconocé si hay algo válido en lo dicho por Alpha, pero desarrollá una posición diferente. Terminá con una frase contundente, no con una pregunta.`;
+// Seguridad para texto
+function sanitize(text) {
+  let out = (text || '').trim();
+  out = out.replace(/\s{2,}/g, ' ').replace(/\.{3,}/g, '…');
+  return out;
+}
 
-async function safeTurn({ apiKey, prompt, maxTokens, systemPrompt, forceQuestion = false, forcePeriod = false, history = [] }) {
-  const fullPrompt = history.concat([{ role: 'user', content: prompt }]);
+// Último mensaje por hablante
+function getLastMessage(conversation, speaker) {
+  return [...conversation].reverse().find(msg => msg.speaker === speaker)?.message || '';
+}
 
+// Prompts
+function rolePromptDebate(role, topic, stance, opponentStance) {
+  const scope = `Tema obligatorio: ${topic}. Centrate en Adam Smith (s. XVIII), su concepto de mercado, y el contraste con mercados actuales (plataformas, información, competencia, regulación, efectos de red).`;
+  const rules = [
+    stance === 'pro'
+      ? role === 'Alpha'
+        ? "Defendé la postura PRO: la noción de mercado en Smith sigue siendo fértil para analizar mercados actuales."
+        : "Defendé la postura PRO: la noción de mercado en Smith conserva vigencia, con matices contemporáneos."
+      : role === 'Alpha'
+      ? "Defendé la postura CONTRA: la noción de mercado en Smith resulta insuficiente para mercados digitales actuales."
+      : "Defendé la postura CONTRA: la noción de mercado en Smith es limitada ante plataformas y efectos de red.",
+    `Tu oponente defiende la postura ${opponentStance.toUpperCase()}. No coincidas salvo concesión mínima explícita y justificada.`,
+    "Evitá muletillas de asistencia. Prohibido: 'puedo ayudarte', 'no tengo preferencias', desvíos a gestión/OKR/KPI."
+  ];
+
+  if (role === 'Alpha') {
+    rules.push("Producí 1–2 oraciones (MÁX. 40 palabras). Terminá SIEMPRE con una pregunta directa.");
+  } else {
+    rules.push("Producí 1–2 oraciones (MÁX. 40 palabras). Respondé y contra-argumentá. No hagas preguntas. Cerrá con punto.");
+  }
+
+  return ["Sos un debatiente disciplinado.", scope, ...rules].join(' ');
+}
+
+// Llamada al modelo
+async function fetchCompletion({ apiKey, role, prompt, maxTokens, systemPrompt, temperature, frequency_penalty }) {
   const body = {
-    model: 'gpt-4o',
+    model: 'gpt-4o-mini',
     messages: [
       { role: 'system', content: systemPrompt },
-      ...fullPrompt
+      { role: 'user', content: prompt }
     ],
     max_tokens: maxTokens,
-    temperature: 1,
-    frequency_penalty: 0.3
+    temperature,
+    frequency_penalty
   };
 
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`
+      Authorization: `Bearer ${apiKey}`
     },
     body: JSON.stringify(body)
   });
@@ -32,82 +64,123 @@ async function safeTurn({ apiKey, prompt, maxTokens, systemPrompt, forceQuestion
   }
 
   const data = await res.json();
-  let content = data.choices[0].message.content.trim();
-
-  if (forceQuestion && !content.trim().endsWith('?')) {
-    content = content.replace(/[.!]+$/, '') + '?';
-  }
-
-  if (forcePeriod && !content.trim().endsWith('.')) {
-    content = content.replace(/[!?]+$/, '') + '.';
-  }
-
-  return content;
+  return sanitize(data.choices?.[0]?.message?.content || '');
 }
 
-exports.handler = async function(event) {
-  const { interactions, max_tokens } = parseLimits(event.queryStringParameters);
-  const apiKey = process.env.OPENAI_API_KEY;
+// Turno robusto
+async function safeTurn({
+  apiKey, role, prompt, maxTokens, systemPrompt,
+  temperature, frequency_penalty, forcePeriod = false, forceQuestion = false
+}) {
+  let out = await fetchCompletion({ apiKey, role, prompt, maxTokens, systemPrompt, temperature, frequency_penalty });
 
-  if (!apiKey) {
+  // corregimos cierre
+  if (forcePeriod && !/[.!?…]$/.test(out)) out += '.';
+  if (forceQuestion && !/\?$/.test(out)) {
+    out = out.replace(/[.!…]\s*$/, '?');
+    if (!/\?$/.test(out)) out += '?';
+  }
+
+  return out;
+}
+
+// Handler principal
+exports.handler = async function(event) {
+  try {
+    const {
+      interactions,
+      max_tokens,
+      topic,
+      mode,
+      alpha_stance,
+      beta_stance,
+      temperature = 1,
+      frequency_penalty = 0.3,
+      conversation: conversationRaw
+    } = parseLimits(event.queryStringParameters || {});
+
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      return {
+        statusCode: 500,
+        body: JSON.stringify({ error: 'Missing OPENAI_API_KEY' })
+      };
+    }
+
+    // Recuperar conversación previa
+    let conversation = [];
+    if (conversationRaw) {
+      try {
+        conversation = JSON.parse(conversationRaw);
+      } catch (err) {
+        console.warn("No se pudo parsear 'conversation'", err);
+      }
+    }
+
+    const alphaPrompt = rolePromptDebate('Alpha', topic, alpha_stance, beta_stance);
+    const betaPrompt = rolePromptDebate('Beta', topic, beta_stance, alpha_stance);
+
+    // Si no hay turnos previos, generamos semilla inicial
+    if (conversation.length === 0) {
+      const alphaSeed = await safeTurn({
+        apiKey,
+        role: 'Alpha',
+        prompt: "Iniciá la tesis PRO o CONTRA según postura, y cerrá con pregunta al oponente.",
+        maxTokens: max_tokens,
+        systemPrompt: alphaPrompt,
+        temperature,
+        frequency_penalty,
+        forceQuestion: true
+      });
+
+      conversation.push({ speaker: 'Alpha', message: alphaSeed });
+    }
+
+    let lastSpeaker = conversation.at(-1).speaker;
+    let nextSpeaker = lastSpeaker === 'Alpha' ? 'Beta' : 'Alpha';
+
+    for (let i = 0; i < interactions; i++) {
+      const lastMsg = conversation.at(-1).message;
+
+      const systemPrompt = nextSpeaker === 'Alpha' ? alphaPrompt : betaPrompt;
+      const forceQuestion = nextSpeaker === 'Alpha';
+      const forcePeriod = nextSpeaker === 'Beta';
+
+      const response = await safeTurn({
+        apiKey,
+        role: nextSpeaker,
+        prompt: lastMsg,
+        maxTokens: max_tokens,
+        systemPrompt,
+        temperature,
+        frequency_penalty,
+        forceQuestion,
+        forcePeriod
+      });
+
+      conversation.push({ speaker: nextSpeaker, message: response });
+
+      // Alternar turno
+      nextSpeaker = nextSpeaker === 'Alpha' ? 'Beta' : 'Alpha';
+    }
+
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mode: 'debate-memoria',
+        topic,
+        alpha_stance,
+        beta_stance,
+        temperature,
+        frequency_penalty,
+        conversation
+      })
+    };
+  } catch (e) {
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: 'Missing OPENAI_API_KEY' })
+      body: JSON.stringify({ error: e.message })
     };
   }
-
-  const conversation = [];
-
-  // 🔸 Primera intervención de Alpha
-  let lastAlpha = 'La noción de mercado de Adam Smith, centrada en la libre competencia y el interés propio, sigue siendo relevante hoy en día, ya que los principios de oferta y demanda subyacen en las dinámicas de plataformas digitales. ¿Cómo puede su enfoque ser irrelevante si aún observamos estos principios en acción?';
-  conversation.push({ speaker: 'Alpha', message: lastAlpha });
-
-  // 🔸 Primer turno de Beta
-  let lastBeta = await safeTurn({
-    apiKey,
-    prompt: lastAlpha,
-    maxTokens: max_tokens,
-    systemPrompt: betaPrompt,
-    forcePeriod: true,
-    history: [
-      { role: 'user', content: lastAlpha }
-    ]
-  });
-  conversation.push({ speaker: 'Beta', message: lastBeta });
-
-  // 🔁 Ciclo de turnos restantes
-  for (let i = 0; i < interactions - 1; i++) {
-    // Alpha responde a Beta
-    lastAlpha = await safeTurn({
-      apiKey,
-      prompt: lastBeta,
-      maxTokens: Math.max(60, Math.min(90, max_tokens)),
-      systemPrompt: alphaPrompt,
-      forceQuestion: true,
-      history: [
-        { role: 'user', content: lastBeta },
-        { role: 'assistant', content: lastAlpha }
-      ]
-    });
-    conversation.push({ speaker: 'Alpha', message: lastAlpha });
-
-    // Beta responde a Alpha
-    lastBeta = await safeTurn({
-      apiKey,
-      prompt: lastAlpha,
-      maxTokens: max_tokens,
-      systemPrompt: betaPrompt,
-      forcePeriod: true,
-      history: [
-        { role: 'user', content: lastAlpha }
-      ]
-    });
-    conversation.push({ speaker: 'Beta', message: lastBeta });
-  }
-
-  return {
-    statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ conversation })
-  };
 };

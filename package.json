@@ -1,0 +1,13 @@
+{
+  "name": "ai-dialog-netlify",
+  "version": "1.0.0",
+  "description": "App where two AIs converse with token and interaction limits",
+  "main": "index.js",
+  "scripts": {
+    "test": "node tests/limits.test.js"
+  },
+  "keywords": ["ai", "netlify", "dialog"],
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs"
+}

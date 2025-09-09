@@ -1,6 +1,9 @@
+// netlify/functions/dialog.js
+const { parseLimits } = require('../../utils/limits');
+
 // --- prompts estrictos y topic-aware ---
 function rolePrompt(role, topic) {
-  const scope = `Tema obligatorio: ${topic}. Responde solo sobre historia del pensamiento económico (Adam Smith, s. XVIII), mercados como unidad de análisis y contraste con mercados actuales (oferta/demanda, instituciones, información, competencia).`;
+  const scope = `Tema obligatorio: ${topic}. Responde solo sobre historia del pensamiento económico (Adam Smith, s. XVIII), mercados como unidad de análisis y contraste con mercados actuales (oferta/demanda, instituciones, información, competencia, plataformas, efectos de red).`;
   const forbidden = "Prohibido: hablar de gestión de proyectos, KPIs empresariales, eficiencia operativa, satisfacción del cliente, metas SMART, roadmap, 'puedo ayudarte', 'no tengo preferencias'.";
 
   if (role === 'Alpha') {
@@ -18,21 +21,26 @@ function rolePrompt(role, topic) {
     scope,
     forbidden,
     "Tu única tarea: responder de forma directa y breve (1–3 oraciones), sin preguntas, sin ofertas de ayuda.",
-    "Si Alpha es ambiguo, infiere desde el tema y mantené el foco histórico/conceptual."
+    "Si Alpha es ambiguo, inferí desde el tema y mantené el foco histórico/conceptual."
   ].join(' ');
 }
 
 // --- chequeo de desvío y sanitizado ---
 const OFFTOPIC_PATTERNS = [
-  /eficiencia operativa|satisfacci[oó]n del cliente|kpi|metas específicas|roadmap|recursos y plazos|objetivos smart/i,
+  /eficiencia operativa|satisfacci[oó]n del cliente|kpi|kpis|metas específicas|smart|roadmap|recursos y plazos|objetivos|okrs/i,
   /puedo ayudarte|no tengo preferencias|tema específico/i
 ];
+
 function sanitize(text) {
   let out = (text || '').trim();
   out = out.replace(/\s{2,}/g, ' ').replace(/\.{3,}/g, '…');
+  // Evitar terminar en signo de pregunta para Beta (no debe preguntar)
+  if (out.endsWith('?')) out = out.slice(0, -1) + '.';
   return out;
 }
+
 function isOffTopic(text) {
+  if (!text) return true;
   return OFFTOPIC_PATTERNS.some(r => r.test(text));
 }
 
@@ -57,38 +65,58 @@ async function fetchCompletion(apiKey, role, prompt, maxTokens, topic, strictNud
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
     body: JSON.stringify(body)
   });
-  if (!res.ok) throw new Error(`OpenAI error: ${await res.text()}`);
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`OpenAI error: ${err}`);
+  }
+
   const data = await res.json();
-  return sanitize(data.choices[0].message.content || '');
+  const content = (data.choices?.[0]?.message?.content || '').trim();
+  return sanitize(content);
 }
 
 exports.handler = async function(event) {
-  const { interactions, max_tokens, topic } = parseLimits(event.queryStringParameters);
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return { statusCode: 500, body: JSON.stringify({ error: 'Missing OPENAI_API_KEY' }) };
-
-  const t = topic || "Mercados como unidad de análisis en el contexto histórico de Adam Smith y mercados actuales";
-  const conversation = [];
-
-  // Alpha arranca ya enfocado en el tema
-  let alphaMsg = "¿En Smith, qué supone llamar 'mercado' a la unidad de análisis respecto de precio y competencia?";
-  conversation.push({ speaker: 'Alpha', message: alphaMsg });
-
-  for (let i = 0; i < interactions; i++) {
-    let betaMsg = await fetchCompletion(apiKey, 'Beta', alphaMsg, max_tokens, t);
-    if (isOffTopic(betaMsg)) {
-      betaMsg = await fetchCompletion(apiKey, 'Beta', alphaMsg, max_tokens, t, true);
+  try {
+    const { interactions, max_tokens, topic } = parseLimits(event.queryStringParameters || {});
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      return { statusCode: 500, body: JSON.stringify({ error: 'Missing OPENAI_API_KEY' }) };
     }
-    conversation.push({ speaker: 'Beta', message: betaMsg });
 
-    let nextAlpha = await fetchCompletion(apiKey, 'Alpha', betaMsg, max_tokens, t);
-    if (isOffTopic(nextAlpha)) {
-      nextAlpha = await fetchCompletion(apiKey, 'Alpha', betaMsg, max_tokens, t, true);
+    const t = topic || "Mercados como unidad de análisis en el contexto histórico de Adam Smith y mercados actuales";
+    const conversation = [];
+
+    // Semilla: Alpha arranca ya enfocado en el tema
+    let alphaMsg = "En Smith, ¿qué implica tomar el ‘mercado’ como unidad de análisis respecto de precio y competencia?";
+    conversation.push({ speaker: 'Alpha', message: alphaMsg });
+
+    for (let i = 0; i < interactions; i++) {
+      // Beta responde
+      let betaMsg = await fetchCompletion(apiKey, 'Beta', alphaMsg, max_tokens, t);
+      if (isOffTopic(betaMsg)) {
+        betaMsg = await fetchCompletion(apiKey, 'Beta', alphaMsg, max_tokens, t, true);
+      }
+      conversation.push({ speaker: 'Beta', message: betaMsg });
+
+      // Alpha pregunta en base a la respuesta de Beta
+      let nextAlpha = await fetchCompletion(apiKey, 'Alpha', betaMsg, max_tokens, t);
+      if (isOffTopic(nextAlpha)) {
+        nextAlpha = await fetchCompletion(apiKey, 'Alpha', betaMsg, max_tokens, t, true);
+      }
+      conversation.push({ speaker: 'Alpha', message: nextAlpha });
+      alphaMsg = nextAlpha;
     }
-    conversation.push({ speaker: 'Alpha', message: nextAlpha });
-    alphaMsg = nextAlpha;
+
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversation, topic: t })
+    };
+  } catch (e) {
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: e.message })
+    };
   }
-
-  return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ conversation }) };
 };
-

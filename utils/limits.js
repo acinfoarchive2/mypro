@@ -15,8 +15,8 @@ function normalizeStance(x, def) {
 }
 
 function parseLimits(qs = {}) {
-  const interactions = clamp(parseIntSafe(qs.interactions, 3), 1, 10);
-  const max_tokens = clamp(parseIntSafe(qs.max_tokens, 120), 30, 300);
+  const interactions = clamp(parseIntSafe(qs.interactions, 5), 1, 20);
+  const max_tokens = clamp(parseIntSafe(qs.max_tokens, 150), 30, 200);
   const topic = (qs.topic || "Mercados como unidad de análisis en el contexto histórico de Adam Smith y mercados actuales").toString().trim();
 
   const mode = (qs.mode || 'dialog').toString().trim().toLowerCase(); // 'dialog' | 'debate'
